@@ -26,5 +26,5 @@ A simple controller class may look something like this:
                 );
         }
     }
-    
-    Assuming your connection string is correct, and you have permissions to call the specified stored procedures, the rest is magic.
+
+Assuming your connection string is correct, and you have permissions to call the specified stored procedures, the rest is magic.
