@@ -2,6 +2,7 @@ using Common.Asp.Util;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Data;
 using System.Data.SqlClient;
 using System.Data.SqlTypes;
@@ -145,6 +146,34 @@ namespace Common.Asp
 
         protected const string InvalidJson = @"{""Error"":""Could not parse a simple JSON object""}";
 
+
+        protected async Task<ActionResult> ExecuteDataTables(string StoredProcedureName, Action<SqlParameterCollection> AddParameters = null, bool AddSessionInfo = true)
+        {
+            NameValueCollection Form;
+
+            switch (Request.HttpMethod)
+            {
+                case WebRequestMethods.Http.Post:
+                    Form = Request.Form;
+                    break;
+                case WebRequestMethods.Http.Get:
+                    Form = Request.Params;
+                    break;
+                default:
+                    return new HttpStatusCodeResult(HttpStatusCode.MethodNotAllowed, "Invalid HTTP Method");
+            }
+
+            return await ExecuteSqlForJson(StoredProcedureName, false, @params =>
+            {
+                @params.AddWithValue("Draw", Form["draw"]);
+                @params.AddWithValue("OrderColumn", Form[$"columns[{Form["order[0][column]"]}][data]"]);
+                @params.AddWithValue("OrderDir", Form["order[0][dir]"]);
+                @params.AddWithValue("Start", Form["start"]);
+                @params.AddWithValue("Length", Form["length"]);
+                @params.AddWithValue("Search", Form["search[value]"]);
+                AddParameters?.Invoke(@params);
+            }, AddSessionInfo: AddSessionInfo);
+        }
         /// <summary>
         /// Executes an Stored Procedure in SQL Server.
         /// This method parses the Request's content for parameters to add to the SqlCommand, then adds extra output parameters for HttpStatusCode and JsonResponse.
