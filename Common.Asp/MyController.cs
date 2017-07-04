@@ -64,6 +64,8 @@ namespace Common.Asp
             {
                 response.Write(JsonResponse);
             }
+
+            HttpContext.Current.Response.Headers.Remove("Content-Language");
         }
         public override void ExecuteResult(ControllerContext context)
         {
