@@ -1,10 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Common.Asp.Util
@@ -16,7 +13,7 @@ namespace Common.Asp.Util
         /// <summary>
         /// A wrapper around an SqlConnection and SqlCommand object. If this wrapper or either of the objects are disposed, all three will be disposed.
         /// </summary>
-        public class ConnectionAndCommand : IDisposable
+        public sealed class ConnectionAndCommand : IDisposable
         {
             /// <summary>
             /// Stores the SqlConnection and creates an SqlCommand with it.
