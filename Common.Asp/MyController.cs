@@ -53,6 +53,10 @@ namespace Common.Asp
             if (StatusCode.HasValue)
             {
                 response.StatusCode = (int)StatusCode;
+                if (StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    response.AppendHeader("WWW-Authenticate", "None");
+                }
             }
 
             if (ContentEncoding != null)
