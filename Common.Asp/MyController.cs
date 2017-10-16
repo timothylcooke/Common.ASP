@@ -151,7 +151,7 @@ namespace Common.Asp
         }
 
         protected const string InvalidJson = @"{""Error"":""Could not parse a simple JSON object""}";
-
+        private static readonly HashSet<string> CheckedProcedures = new HashSet<string>();
 
         protected async Task<ActionResult> ExecuteDataTables(string StoredProcedureName, Action<SqlParameterCollection> AddParameters = null, bool AddSessionInfo = true)
         {
@@ -201,6 +201,36 @@ namespace Common.Asp
                     var contentType = Request.Headers["Content-Type"];
                     if (contentType != null && contentType.ToLowerInvariant().Contains("application/json"))
                     {
+                        // We're going to make sure we have permissions to this procedure.
+                        lock (CheckedProcedures)
+                        {
+                            if (!CheckedProcedures.Contains(StoredProcedureName))
+                            {
+                                sql.SqlCommand.CommandType = CommandType.Text;
+                                sql.SqlCommand.CommandText = "SELECT a.name FROM sys.parameters a LEFT JOIN sys.table_types b ON a.user_type_id = b.user_type_id WHERE a.object_id = object_id(@ProcedureName) AND a.system_type_id = 243 AND b.user_type_id IS NULL";
+                                @params.AddWithValue("ProcedureName", StoredProcedureName);
+
+                                using (var reader = sql.SqlCommand.ExecuteReader())
+                                {
+                                    if (reader.Read())
+                                    {
+                                        var paramsWithoutPermissions = new List<string>();
+                                        do
+                                        {
+                                            paramsWithoutPermissions.Add(reader.GetString(0));
+                                        }
+                                        while (reader.Read());
+                                        throw new Exception($"The current user does not have permissions to execute the table types for the following parameters: {string.Join(", ", paramsWithoutPermissions)}");
+                                    }
+                                }
+
+                                CheckedProcedures.Add(StoredProcedureName);
+                                sql.SqlCommand.CommandType = CommandType.StoredProcedure;
+                                @params.Clear();
+                                sql.SqlCommand.CommandText = StoredProcedureName;
+                            }
+                        }
+
                         try
                         {
                             var jsonReader = new JsonTextReader(InputStreamString == null ? new StreamReader(Request.InputStream) as TextReader : new StringReader(InputStreamString));
@@ -302,7 +332,7 @@ namespace Common.Asp
 
                                                                         if (!columnIndices.ContainsKey(columnName))
                                                                         {
-                                                                            return new MyJsonResult(HttpStatusCode.BadRequest, $@"{{""Error"":""\""{columnName}\"" is not a valid property of \""{propertyName}.\""""}}");
+                                                                            return new MyJsonResult(HttpStatusCode.BadRequest, $@"{{""Error"":""\""{columnName}\"" is not a valid property of \""{propertyName}.\"" Valid property names are: {string.Join(", ", table.Columns.OfType<DataColumn>().Select(p => p.ColumnName))}""}}");
                                                                         }
 
                                                                         var index = columnIndices[columnName];
