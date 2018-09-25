@@ -187,15 +187,24 @@ namespace Common.Asp
         /// It returns a Json result. Often, this result will have have a single parameter "Error" to specify the error.
         /// </summary>
         /// <param name="StoredProcedureName">The name of the Stored Procedure to call.</param>
+        /// <param name="AddParameters">
+        /// An action that allows you to add extra parameters to the method before the parameters are passed to SQL Server. Pass null, rather than an Action if you do not wish to add custom parameters.
+        /// </param>
+        /// <param name="CheckForInvalidParameters">
+        /// A more advanced version of <paramref name="AddParameters"/>. This is a function that allows you to add parameters, and check the values of existing parameters.
+        /// If you pass null for this parameter, no checks will be made. If, however, you specify a method, that method will be called after the Request's body is parsed and all parameters are added.
+        /// If any of the parameters are invalid, and you can tell that before even passing them to SQL Server, simply return a MyJsonResult, and that MyJsonResult will be returned by this method. If there is not
+        /// an obvious error, return null, and this method will call SQL Server, and return its response.
+        /// </param>
         /// <returns>A MyJsonResult with Json.</returns>
-        protected async Task<MyJsonResult> ExecuteSqlForJson(string StoredProcedureName, bool ParseRequestBody = true, Action<SqlParameterCollection> AddParameters = null, object @lock = null, bool AddSessionInfo = true, string InputStreamString = null)
+        protected async Task<MyJsonResult> ExecuteSqlForJson(string StoredProcedureName, bool ParseRequestBody = true, Action<SqlParameterCollection> AddParameters = null, object @lock = null, bool AddSessionInfo = true, string InputStreamString = null, Func<SqlParameterCollection, MyJsonResult> CheckForInvalidParameters = null)
         {
             using (var sql = await SqlUtil.CreateSqlCommandAsync(StoredProcedureName))
             {
                 // Now we're starting to parse the actual Json object
                 var @params = sql.SqlCommand.Parameters;
 
-                if (ParseRequestBody && (Request.HttpMethod == WebRequestMethods.Http.Post || Request.HttpMethod == WebRequestMethods.Http.Put))
+                if (ParseRequestBody && (Request.HttpMethod == WebRequestMethods.Http.Post || Request.HttpMethod == WebRequestMethods.Http.Put || Request.HttpMethod?.ToLower() == "patch"))
                 {
                     var contentType = Request.Headers["Content-Type"];
                     if (contentType != null && contentType.ToLowerInvariant().Contains("application/json"))
@@ -446,11 +455,12 @@ namespace Common.Asp
                 if (AddSessionInfo)
                     AddUserIdAndSessionId(@params);
 
-                if (AddParameters != null)
-                    AddParameters(@params);
+                AddParameters?.Invoke(@params);
 
+                var invalidParams = CheckForInvalidParameters?.Invoke(@params);
+                
 #pragma warning disable CS0618 // We ignore the deprecation because this is in fact the method we want to call.
-                return await ExecuteSqlForJson(sql, @params, @lock, AddSessionInfo);
+                return invalidParams ?? await ExecuteSqlForJson(sql, @params, @lock, AddSessionInfo);
 #pragma warning restore CS0618
             }
         }
@@ -543,13 +553,12 @@ namespace Common.Asp
             var sId = Request.Cookies["SessionId"];
 
             int UserId;
-            Guid SessionId;
 
             if (!@params.Contains("UserId") && uId != null && int.TryParse(uId.Value, out UserId))
                 @params.AddWithValue("UserId", UserId);
 
-            if (!@params.Contains("SessionId") && sId != null && Guid.TryParse(sId.Value, out SessionId))
-                @params.AddWithValue("SessionId", SessionId);
+            if (!@params.Contains("SessionId") && sId != null && !string.IsNullOrEmpty(sId.Value))
+                @params.AddWithValue("SessionId", sId.Value);
         }
 
         [Obsolete("Use one of the overloads for `ExecuteSqlForJson`")]
